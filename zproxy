@@ -1,0 +1,122 @@
+#!/bin/bash
+#Zproxy - Proxy Switcher
+
+proxy_list=~/.zproxy
+
+function change {
+	unset list
+	while read -r line
+	do
+		list+=("FALSE")
+		list+=("$line")
+	done < $proxy_list
+	list[0]="TRUE"
+	srv=$(zenity --list --title "Zproxy - Proxy Switcher" --text "Select a Proxy to use" --width "400" --height "300" --radiolist \
+			--column "Pick" --column "List" "${list[@]}")
+	if [ $srv ]; then
+		unset values
+		IFS=":" ; for val in $srv ; do
+			values+=("$val")
+		done
+		gconftool --type String --set /system/proxy/mode manual
+		gconftool --type Boolean --set /system/http_proxy/use_http_proxy True
+		gconftool --type String --set /system/http_proxy/host ${values[1]}
+		gconftool --type Integer --set /system/http_proxy/port ${values[2]}
+		gconftool --type String --set /system/proxy/ftp_host ${values[1]}
+		gconftool --type Integer --set /system/proxy/ftp_port ${values[2]}
+		gconftool --type String --set /system/proxy/secure_host ${values[1]}
+		gconftool --type Integer --set /system/proxy/secure_port ${values[2]}
+		gconftool --type String --set /system/proxy/socks_host ${values[1]}
+		gconftool --type Integer --set /system/proxy/socks_port ${values[2]}
+		gsettings set org.gnome.system.proxy "mode" manual
+		gsettings set org.gnome.system.proxy.http "host" ${values[1]}
+		gsettings set org.gnome.system.proxy.http "port" ${values[2]}
+		gsettings set org.gnome.system.proxy.https "host" ${values[1]}
+		gsettings set org.gnome.system.proxy.https "port" ${values[2]}
+		gsettings set org.gnome.system.proxy.ftp "host" ${values[1]}
+		gsettings set org.gnome.system.proxy.ftp "port" ${values[2]}
+		gsettings set org.gnome.system.proxy.socks "host" ${values[1]}
+		gsettings set org.gnome.system.proxy.socks "port" ${values[2]}
+	fi
+}
+
+function add {
+	new=$(zenity --forms --title "Zproxy - Proxy Switcher" --text "New Proxy Info : " --width "400" --height "300" \
+			--add-entry "Proxy Name :" --add-entry "Proxy Address :" --add-entry "Port :")
+	unset values
+	IFS="|" ; for val in $new ; do
+		values+=("$val")
+	done
+
+	if [[ $new != "" && ${values[0]} != "" && ${values[1]} != "" && ${values[2]} != "" ]]; then
+		if [[ $new == *:* ]]; then
+			data_valid=FALSE
+		else
+			data_valid=TRUE
+		fi
+
+		if [ ${values[2]} -le 65536 ]; then
+			port_valid=TRUE
+		else
+			port_valid=FALSE
+		fi
+
+		if [[ $data_valid = TRUE && $port_valid = TRUE ]]; then
+			echo ${values[0]}:${values[1]}:${values[2]} >> $proxy_list
+		else
+			zenity --warning --title "Invalid Input" --text "Please make sure not to contain \':\' in every parameters. 
+				\nProxy address need to be valid format.\n\nPort number need to be less than 65536."
+		fi
+	fi
+}
+
+function remove {
+	unset list
+	while read -r line
+	do
+		list+=("FALSE")
+		list+=("$line")
+	done < $proxy_list
+	del=$(zenity --list --title "Zproxy - Proxy Switcher" --text "Select Proxy to Delete" --width "400" --height "300" --checklist \
+		--column "Pick" --column "List" "${list[@]}")
+	IFS="|" ; for val in $del ; do
+		sed -i "/$val/ d" $proxy_list
+	done
+}
+
+function main {
+	if [ ! -f $proxy_list ]; then
+		touch $proxy_list
+		echo "Your_Freedom:127.0.0.1:8080" > $proxy_list
+	fi
+	opt=$(zenity --list --title "Zproxy - Proxy Switcher" --text "Choose the Option" --width "400" --height "300" --radiolist \
+		--column "Pick" --column "Options" TRUE "Change Proxy" \
+		FALSE "No Proxy" FALSE "Add Proxy" FALSE "Remove Proxy" FALSE "About")
+	case $opt in
+		"Change Proxy")
+			change
+			main
+			;;
+			
+		"No Proxy")
+			gconftool --type String --set /system/proxy/mode none
+			gsettings set org.gnome.system.proxy "mode" none
+			main
+			;;
+			
+		"Add Proxy")
+			add
+			main
+			;;
+			
+		"Remove Proxy")
+			remove
+			main
+			;;
+		"About")
+			zenity --text-info --title "About Zproxy" --filename "/usr/share/zproxy/aboutz" --width "650" --height "500"
+			main
+esac
+}
+
+main
